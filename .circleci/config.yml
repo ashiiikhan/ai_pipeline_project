@@ -3,7 +3,7 @@ version: 2.1
 jobs:
   test:
     docker:
-      - image: cimg/base:stable   # includes Node + ability to install Python + K6
+      - image: cimg/base:stable   # Includes Node + ability to install Python + K6
     steps:
       - checkout
 
@@ -14,53 +14,48 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y python3 python3-pip
 
-      # Install K6
+      # Install Python dependencies + K6
       - run:
-          name: Install K6
+          name: Install Python dependencies + K6
           command: |
-            sudo apt-get install -y gnupg2 ca-certificates
-            curl -s https://dl.k6.io/key.gpg | sudo apt-key add -
-            echo "deb https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-            sudo apt-get update
-            sudo apt-get install -y k6
+            python3 -m pip install --upgrade pip
+            pip install -r requirements.txt
+            pip install k6
 
-      # Install Lighthouse
+      # Install Node.js
       - run:
-          name: Install Lighthouse
+          name: Install Node.js
+          command: |
+            curl -sL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+
+      # Install Lighthouse CLI
+      - run:
+          name: Install Lighthouse CLI
           command: sudo npm install -g lighthouse
 
+      # Create report folder
       - run:
           name: Create report folder
           command: mkdir -p test_reports
 
-      # Run K6 test
+      # Run K6 load test
       - run:
-          name: Run K6
+          name: Run K6 Load Test
           command: k6 run --out json=test_reports/backend_k6.json tests/k6/script.js
 
-      # Run Lighthouse
+      # Run Lighthouse test
       - run:
-          name: Run Lighthouse
-          command: lighthouse http://your-frontend-url.com --output=html --output-path=test_reports/lighthouse_report.html --quiet
-
-      # Upload to FastAPI
-      - run:
-          name: Upload Reports
+          name: Run Lighthouse Test
           command: |
-            python3 - <<EOF
-            import requests
-            files = {
-                "files": open("test_reports/backend_k6.json", "rb"),
-                "files2": open("test_reports/lighthouse_report.html", "rb")
-            }
-            data = {
-                "branch": "main",
-                "commit": "CI Build",
-                "recipients": "your@email.com"
-            }
-            response = requests.post("https://YOUR-FASTAPI-HOST/analyze", files=files, data=data)
-            print(response.text)
-            EOF
+            while read url; do
+              lighthouse $url --output=html --output-path=test_reports/lighthouse_report.html --quiet
+            done < tests/lighthouse/urls.txt
+
+      # Upload reports using Python script
+      - run:
+          name: Upload Reports to AI API
+          command: python3 scripts/upload_reports.py
 
 workflows:
   version: 2
