@@ -1,0 +1,57 @@
+version: 2.1
+
+jobs:
+  test:
+    docker:
+      - image: cimg/python:3.11
+        environment:
+          PIP_CACHE_DIR: ~/.cache/pip
+      - image: cimg/node:20.0  # For Lighthouse
+    steps:
+      - checkout
+
+      # Install Python dependencies
+      - run:
+          name: Install Python deps
+          command: |
+            python -m pip install --upgrade pip
+            pip install -r requirements.txt
+            pip install k6
+
+      # Install Lighthouse CLI globally
+      - run:
+          name: Install Lighthouse
+          command: npm install -g lighthouse
+
+      # Run K6 test
+      - run:
+          name: Run K6 Load Test
+          command: k6 run --out json=test_reports/backend_k6.json tests/k6/script.js
+
+      # Run Lighthouse test
+      - run:
+          name: Run Lighthouse Test
+          command: |
+            while read url; do
+              lighthouse $url --output=html --output-path=test_reports/lighthouse_report.html --quiet
+            done < tests/lighthouse/urls.txt
+
+      # Upload reports to AI API
+      - run:
+          name: Send Reports to AI API
+          command: |
+            python <<EOF
+            import requests
+            files = {
+                "files": open("test_reports/backend_k6.json", "rb"),
+            }
+            # Add Lighthouse HTML file
+            files["files2"] = open("test_reports/lighthouse_report.html", "rb")
+            data = {
+                "branch": "main",
+                "commit": "CI build",
+                "recipients": "youremail@example.com"
+            }
+            response = requests.post("http://127.0.0.1:8000/analyze", files=files, data=data)
+            print(response.text)
+            EOF

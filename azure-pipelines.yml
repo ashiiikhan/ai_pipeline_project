@@ -1,0 +1,101 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+steps:
+# --------------------------
+# Checkout Code
+# --------------------------
+- task: Checkout@1
+
+# --------------------------
+# Setup Python
+# --------------------------
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '$(PYTHON_VERSION)'
+    addToPath: true
+
+- script: |
+    python -m pip install --upgrade pip
+    pip install -r requirements.txt
+    pip install k6
+  displayName: 'Install Python dependencies + K6'
+
+# --------------------------
+# Setup Node
+# --------------------------
+- task: NodeTool@0
+  inputs:
+    versionSpec: '$(NODE_VERSION)'
+  displayName: 'Install Node.js'
+
+- script: |
+    npm install -g lighthouse
+  displayName: 'Install Lighthouse CLI'
+
+# --------------------------
+# Run K6 Test
+# --------------------------
+- script: |
+    mkdir -p test_reports
+    k6 run --out json=test_reports/backend_k6.json tests/k6/script.js
+  displayName: 'Run K6 Load Test'
+
+# --------------------------
+# Run Lighthouse Test
+# --------------------------
+- script: |
+    while read url; do
+      lighthouse $url --output=html --output-path=test_reports/lighthouse_report.html --quiet
+    done < tests/lighthouse/urls.txt
+  displayName: 'Run Lighthouse Test'
+
+# --------------------------
+# Send Reports to AI API
+# --------------------------
+- script: |
+    python <<EOF
+    import os
+    import requests
+
+    dest = None
+    try:
+        with open('.env', 'r', encoding='utf-8') as f:
+            for line in f:
+                s = line.strip()
+                if s and '=' in s and not s.startswith('#'):
+                    k, v = s.split('=', 1)
+                    if k.strip() == 'DEST_EMAIL':
+                        dest = v.strip()
+                        break
+    except FileNotFoundError:
+        pass
+
+    files = {
+        "files": open("test_reports/backend_k6.json", "rb"),
+        "files2": open("test_reports/lighthouse_report.html", "rb"),
+    }
+    data = {
+        "branch": "main",
+        "commit": "Azure DevOps build",
+    }
+    if dest:
+        data["recipients"] = dest
+
+    response = requests.post("http://127.0.0.1:8000/analyze", files=files, data=data)
+    print(response.text)
+    EOF
+  displayName: 'Send Reports to AI API'
+
+
+k6 run --out json=test_reports/backend_k6.json tests/k6/script.js
+npx lighthouse http://127.0.0.1:8000 --output=html --output-path=test_reports/lighthouse_report.html
