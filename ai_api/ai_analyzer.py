@@ -6,7 +6,7 @@ async def analyze_reports(paths, branch, commit):
         try:
             with open(p, "r", encoding="utf-8") as f:
                 text = f.read()
-            summary.append(text[:2000])  # limit length
+            summary.append(text[:2000])  
         except:
             continue
 
