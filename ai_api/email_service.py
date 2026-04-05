@@ -56,7 +56,7 @@ def send_email(subject, body, to_emails, attachments=None):
         except Exception as e:
             print(f"Failed to attach {p}: {e}")
 
-    # ✅ More stable SMTP handling
+ 
     try:
         with smtplib.SMTP(host, port, timeout=10) as smtp:
             smtp.ehlo()
