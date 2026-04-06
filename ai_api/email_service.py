@@ -33,7 +33,7 @@ def send_email(subject, body, to_emails, attachments=None):
         subtype="html"
     )
 
-    # ✅ Safe attachment handling
+   
     for p in attachments or []:
         if not os.path.exists(p):
             print(f"Attachment not found: {p}")
